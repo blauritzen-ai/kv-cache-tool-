@@ -1,0 +1,1563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>KV Cache Storage Estimator | DDN AI Infrastructure</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.8.0/Recharts.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  :root {
+    --bg-base: #080c14;
+    --bg-panel: #0d1420;
+    --bg-card: #111927;
+    --bg-hover: #162030;
+    --border: #1e2d42;
+    --border-bright: #2a3f5f;
+    --amber: #f5a623;
+    --amber-dim: #c4841c;
+    --amber-glow: rgba(245,166,35,0.15);
+    --cyan: #00d4ff;
+    --cyan-dim: #0099bb;
+    --red: #ff4d4d;
+    --red-dim: #cc2222;
+    --green: #00e676;
+    --green-dim: #00a854;
+    --text-primary: #e8f0fe;
+    --text-secondary: #8899bb;
+    --text-dim: #445566;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  html, body, #root { height: 100%; background: var(--bg-base); color: var(--text-primary); font-family: var(--sans); }
+  
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg-base); }
+  ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+
+  .app-shell {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    grid-template-rows: 56px 1fr;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .topbar {
+    grid-column: 1 / -1;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    position: relative;
+    z-index: 10;
+  }
+
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: var(--amber);
+    clip-path: polygon(0 0, 100% 0, 100% 65%, 65% 100%, 0 100%);
+    flex-shrink: 0;
+  }
+
+  .logo-text {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-primary);
+  }
+  .logo-text span { color: var(--amber); }
+
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    padding: 7px 14px;
+    border-radius: 2px;
+    cursor: pointer;
+    border: 1px solid;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+  .btn-ghost {
+    background: transparent;
+    border-color: var(--border-bright);
+    color: var(--text-secondary);
+  }
+  .btn-ghost:hover { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
+  .btn-amber {
+    background: var(--amber);
+    border-color: var(--amber);
+    color: #000;
+    font-weight: 600;
+  }
+  .btn-amber:hover { background: #ffc147; }
+  .btn-danger {
+    background: transparent;
+    border-color: var(--red);
+    color: var(--red);
+  }
+
+  .sidebar {
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 14px;
+  }
+
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 8px 6px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    line-height: 1.4;
+  }
+  .preset-btn:hover, .preset-btn.active {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: var(--amber-glow);
+  }
+  .preset-btn .preset-icon { font-size: 14px; display: block; margin-bottom: 2px; }
+
+  .input-group { margin-bottom: 12px; }
+  .input-group:last-child { margin-bottom: 0; }
+
+  label {
+    display: block;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text-secondary);
+    margin-bottom: 5px;
+    letter-spacing: 0.04em;
+  }
+
+  select, input[type="range"], input[type="number"] {
+    width: 100%;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 7px 10px;
+    border-radius: 2px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  select:focus, input:focus { border-color: var(--amber); }
+
+  input[type="range"] {
+    padding: 0;
+    height: 4px;
+    -webkit-appearance: none;
+    background: var(--border);
+    border: none;
+    cursor: pointer;
+    margin-top: 6px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--amber);
+    cursor: pointer;
+  }
+
+  .range-row { display: flex; align-items: center; gap: 10px; }
+  .range-val {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--amber);
+    min-width: 50px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .main-content {
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+
+  .tab {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 20px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+  .tab:hover { color: var(--text-secondary); }
+  .tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+
+  .metric-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--amber);
+  }
+  .metric-card.danger::before { background: var(--red); }
+  .metric-card.success::before { background: var(--green); }
+  .metric-card.info::before { background: var(--cyan); }
+
+  .metric-label { font-size: 10px; font-family: var(--mono); color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+  .metric-value { font-size: 26px; font-family: var(--mono); font-weight: 600; color: var(--text-primary); line-height: 1; }
+  .metric-unit { font-size: 12px; color: var(--text-secondary); margin-top: 4px; font-family: var(--mono); }
+  .metric-card.danger .metric-value { color: var(--red); }
+  .metric-card.success .metric-value { color: var(--green); }
+
+  .warning-banner {
+    background: rgba(255,77,77,0.1);
+    border: 1px solid var(--red);
+    border-radius: 3px;
+    padding: 12px 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--red);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .warning-icon { font-size: 16px; flex-shrink: 0; }
+
+  .success-banner {
+    background: rgba(0,230,118,0.08);
+    border: 1px solid var(--green);
+    border-radius: 3px;
+    padding: 12px 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--green);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .chart-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 20px;
+  }
+
+  .chart-title {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .chart-title-sub { font-size: 10px; color: var(--text-dim); font-weight: 400; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .data-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  .data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .data-table td:first-child { color: var(--text-primary); }
+  .data-table td.highlight { color: var(--amber); font-weight: 600; }
+  .data-table td.good { color: var(--green); }
+  .data-table td.bad { color: var(--red); }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: var(--bg-hover); }
+
+  .vram-bar-container {
+    height: 48px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    display: flex;
+    position: relative;
+  }
+  .vram-bar-segment {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    transition: width 0.4s ease;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .vram-overflow {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border: 2px solid var(--red);
+    animation: pulse-border 1s ease-in-out infinite;
+    pointer-events: none;
+    border-radius: 2px;
+  }
+  @keyframes pulse-border {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    width: 100%;
+    max-width: 780px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 28px;
+  }
+  .modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .modal-title {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--amber);
+    letter-spacing: 0.06em;
+  }
+  .modal-subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+  .close-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    width: 28px; height: 28px;
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .close-btn:hover { border-color: var(--red); color: var(--red); }
+
+  .guide-tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+  .guide-tab {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 6px 12px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .guide-tab:hover { border-color: var(--amber); color: var(--amber); }
+  .guide-tab.active { background: var(--amber-glow); border-color: var(--amber); color: var(--amber); }
+
+  .guide-content h3 { font-family: var(--mono); font-size: 13px; color: var(--amber); margin-bottom: 10px; margin-top: 18px; letter-spacing: 0.06em; }
+  .guide-content h3:first-child { margin-top: 0; }
+  .guide-content p { font-size: 13px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 12px; }
+  .guide-content ul { list-style: none; padding: 0; margin-bottom: 12px; }
+  .guide-content ul li { font-size: 13px; color: var(--text-secondary); line-height: 1.6; padding: 4px 0 4px 18px; position: relative; }
+  .guide-content ul li::before { content: '▸'; color: var(--amber); position: absolute; left: 0; }
+  .guide-content .highlight-box {
+    background: var(--amber-glow);
+    border: 1px solid var(--amber-dim);
+    border-radius: 3px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--amber);
+  }
+  .guide-content .objection-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+  .guide-content .objection-q { font-family: var(--mono); font-size: 11px; color: var(--red); margin-bottom: 6px; }
+  .guide-content .objection-a { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+
+  .roi-highlight {
+    background: linear-gradient(135deg, rgba(245,166,35,0.1) 0%, rgba(0,212,255,0.05) 100%);
+    border: 1px solid var(--amber-dim);
+    border-radius: 3px;
+    padding: 20px;
+    text-align: center;
+  }
+  .roi-number {
+    font-family: var(--mono);
+    font-size: 48px;
+    font-weight: 600;
+    color: var(--amber);
+    line-height: 1;
+  }
+  .roi-label { font-size: 12px; color: var(--text-secondary); margin-top: 8px; font-family: var(--mono); }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 2px;
+    border: 1px solid;
+  }
+  .tag-amber { border-color: var(--amber-dim); color: var(--amber); background: var(--amber-glow); }
+  .tag-red { border-color: var(--red-dim); color: var(--red); background: rgba(255,77,77,0.1); }
+  .tag-green { border-color: var(--green-dim); color: var(--green); background: rgba(0,230,118,0.08); }
+  .tag-cyan { border-color: var(--cyan-dim); color: var(--cyan); background: rgba(0,212,255,0.08); }
+
+  .export-row { display: flex; gap: 8px; }
+  .export-row input[type="file"] { display: none; }
+
+  .tooltip-text {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+
+  .exec-section-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, ReferenceLine, Cell } = Recharts;
+
+// ─── DATA MODELS ────────────────────────────────────────────────────────────
+
+const GPU_PRESETS = {
+  H100: { name: 'NVIDIA H100 SXM', vram: 80, hourlyCloud: 8.0, capex: 30000, hbmBandwidth: 3350 },
+  A100: { name: 'NVIDIA A100 SXM', vram: 80, hourlyCloud: 3.5, capex: 15000, hbmBandwidth: 2000 },
+  L40S: { name: 'NVIDIA L40S', vram: 48, hourlyCloud: 2.2, capex: 9000, hbmBandwidth: 864 },
+};
+
+const LLM_PRESETS = {
+  'Llama-3-8B':   { name: 'Llama 3 8B',    params: 8,   layers: 32,  hidden: 4096, heads: 32, kvHeads: 8  },
+  'Llama-3-70B':  { name: 'Llama 3 70B',   params: 70,  layers: 80,  hidden: 8192, heads: 64, kvHeads: 8  },
+  'Llama-3-405B': { name: 'Llama 3 405B',  params: 405, layers: 126, hidden: 16384, heads: 128, kvHeads: 8 },
+  'Mixtral-8x7B': { name: 'Mixtral 8x7B',  params: 47,  layers: 32,  hidden: 4096, heads: 32, kvHeads: 8  },
+  'Mixtral-8x22B':{ name: 'Mixtral 8x22B', params: 141, layers: 56,  hidden: 6144, heads: 48, kvHeads: 8  },
+};
+
+const FW_PRESETS = {
+  vllm:    { name: 'vLLM',         overhead: 1.15, desc: '+15% framework overhead' },
+  trtllm:  { name: 'TensorRT-LLM', overhead: 1.10, desc: '+10% optimized runtime' },
+  custom:  { name: 'Custom/Other', overhead: 1.20, desc: '+20% generic overhead' },
+};
+
+const SCENARIO_PRESETS = {
+  legal:    { name: 'Legal Review',      icon: '⚖️', inputTokens: 32000, outputTokens: 2000, concurrency: 20,  desc: 'Long document ingestion with complex reasoning' },
+  callcenter:{ name: 'Call Center',      icon: '📞', inputTokens: 2000,  outputTokens: 500,  concurrency: 500, desc: 'High-volume short sessions, rapid context switching' },
+  dev:      { name: 'Developer Assist',  icon: '💻', inputTokens: 8000,  outputTokens: 4000, concurrency: 50,  desc: 'Complex logic, code analysis, long reasoning chains' },
+  rag:      { name: 'RAG Search',        icon: '🔍', inputTokens: 16000, outputTokens: 1000, concurrency: 100, desc: 'Document retrieval with context assembly' },
+};
+
+const STORAGE_OPTIONS = {
+  nas:  { name: 'Standard NAS',    bandwidth: 10,  latency: 5000, costPerTB: 150 },
+  ddn:  { name: 'DDN AI Fabric',   bandwidth: 1000, latency: 50,  costPerTB: 400 },
+};
+
+// ─── CALC ENGINE ────────────────────────────────────────────────────────────
+
+function calcMemory(config) {
+  const gpu = GPU_PRESETS[config.gpu];
+  const llm = LLM_PRESETS[config.llm];
+  const fw  = FW_PRESETS[config.framework];
+
+  // Model weights in GB (BF16 = 2 bytes/param)
+  const precision = config.precision === 'fp16' ? 2 : (config.precision === 'int8' ? 1 : 4);
+  const modelWeightsGB = llm.params * 1e9 * precision / 1e9;
+
+  // Engine overhead
+  const engineOverheadGB = modelWeightsGB * (fw.overhead - 1);
+
+  // KV Cache per token per layer (bytes)
+  // KV size = 2 (K+V) * kvHeads * head_dim * 2 (bytes FP16) * layers
+  const headDim = llm.hidden / llm.heads;
+  const kvBytesPerToken = 2 * llm.kvHeads * headDim * 2 * llm.layers;
+  const kvGBPerRequest = (kvBytesPerToken * config.inputTokens) / 1e9;
+  const totalKvCacheGB = kvGBPerRequest * config.concurrency;
+
+  const totalRequired = modelWeightsGB + engineOverheadGB + totalKvCacheGB;
+  const totalVramGB = gpu.vram;
+
+  const offloadGB = Math.max(0, totalRequired - totalVramGB);
+  const isOverloaded = totalRequired > totalVramGB;
+  const utilizationPct = Math.min(100, (totalRequired / totalVramGB) * 100);
+
+  // KV cache that fits in VRAM
+  const kvInVram = Math.max(0, totalVramGB - modelWeightsGB - engineOverheadGB);
+  const kvOffload = Math.max(0, totalKvCacheGB - kvInVram);
+
+  // Storage throughput requirements
+  // Each context restore = kvGBPerRequest loaded from storage
+  // Context restore time = kvOffload / bandwidth (per request)
+  const nasBandwidth = STORAGE_OPTIONS.nas.bandwidth;
+  const ddnBandwidth = STORAGE_OPTIONS.ddn.bandwidth;
+
+  const nasRestoreTimeSec = kvOffload > 0 ? (kvOffload / nasBandwidth) : 0;
+  const ddnRestoreTimeSec = kvOffload > 0 ? (kvOffload / ddnBandwidth) : 0;
+
+  // Tokens/second context restore time impact
+  const avgTokenOutputSec = config.outputTokens / 50; // assume 50 tok/s generation
+  const nasOverheadPct = nasRestoreTimeSec / (avgTokenOutputSec + nasRestoreTimeSec) * 100;
+  const ddnOverheadPct = ddnRestoreTimeSec / (avgTokenOutputSec + ddnRestoreTimeSec) * 100;
+
+  // Swaps per hour capacity
+  const nasSwapsPerHour = kvOffload > 0 ? Math.floor(3600 / nasRestoreTimeSec) : 999999;
+  const ddnSwapsPerHour = kvOffload > 0 ? Math.floor(3600 / ddnRestoreTimeSec) : 999999;
+  const requiredSwaps = config.concurrency * 6; // avg 6 context swaps/hr per concurrent user
+
+  // System overload check
+  const nasOverloaded = nasSwapsPerHour < requiredSwaps && kvOffload > 0;
+  const ddnOverloaded = ddnSwapsPerHour < requiredSwaps && kvOffload > 0;
+
+  // GPU savings calculation
+  // Extra GPUs needed with NAS (slow storage forces more VRAM)
+  const gpusNeededWithNas = Math.ceil(totalRequired / totalVramGB);
+  const gpusWithDdn = Math.ceil((modelWeightsGB + engineOverheadGB) / totalVramGB) + 1;
+  const gpusSaved = Math.max(0, gpusNeededWithNas - gpusWithDdn);
+
+  const capexSaved = gpusSaved * gpu.capex;
+  const opexSavedPerYear = gpusSaved * gpu.hourlyCloud * 24 * 365;
+
+  // ROI
+  const ddnCost = config.concurrency * 0.001 * 12000; // ~$12k/month per 1000 concurrent for DDN
+  const annualSavings = opexSavedPerYear + capexSaved * 0.3; // amortize capex
+  const roi = ddnCost > 0 ? ((annualSavings - ddnCost) / ddnCost * 100) : 0;
+
+  // Data lifecycle
+  const kvCachePerDay = totalKvCacheGB * config.concurrency * 24 * 0.5; // 50% unique sessions
+  const kvCachePer30Days = kvCachePerDay * 30;
+  const kvCachePer365Days = kvCachePerDay * 365;
+
+  return {
+    modelWeightsGB: Math.round(modelWeightsGB * 10) / 10,
+    engineOverheadGB: Math.round(engineOverheadGB * 10) / 10,
+    totalKvCacheGB: Math.round(totalKvCacheGB * 10) / 10,
+    kvInVram: Math.round(kvInVram * 10) / 10,
+    kvOffload: Math.round(kvOffload * 10) / 10,
+    totalRequired: Math.round(totalRequired * 10) / 10,
+    totalVramGB,
+    offloadGB: Math.round(offloadGB * 10) / 10,
+    isOverloaded,
+    utilizationPct: Math.round(utilizationPct),
+    nasRestoreTimeSec: Math.round(nasRestoreTimeSec * 100) / 100,
+    ddnRestoreTimeSec: Math.round(ddnRestoreTimeSec * 1000) / 1000,
+    nasOverheadPct: Math.round(nasOverheadPct),
+    ddnOverheadPct: Math.round(ddnOverheadPct * 10) / 10,
+    nasSwapsPerHour: isFinite(nasSwapsPerHour) ? nasSwapsPerHour : 'Unlimited',
+    ddnSwapsPerHour: isFinite(ddnSwapsPerHour) ? ddnSwapsPerHour : 'Unlimited',
+    requiredSwaps,
+    nasOverloaded,
+    ddnOverloaded,
+    gpusNeededWithNas,
+    gpusWithDdn,
+    gpusSaved,
+    capexSaved,
+    opexSavedPerYear: Math.round(opexSavedPerYear),
+    roi: Math.round(roi),
+    kvCachePerDay: Math.round(kvCachePerDay),
+    kvCachePer30Days: Math.round(kvCachePer30Days),
+    kvCachePer365Days: Math.round(kvCachePer365Days),
+    kvGBPerRequest: Math.round(kvGBPerRequest * 100) / 100,
+    ddnCost: Math.round(ddnCost),
+    annualSavings: Math.round(annualSavings),
+    headDim,
+    kvBytesPerToken,
+  };
+}
+
+// ─── CUSTOM TOOLTIP ──────────────────────────────────────────────────────────
+
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{ background: '#0d1420', border: '1px solid #1e2d42', padding: '10px 14px', borderRadius: 2, fontFamily: 'IBM Plex Mono', fontSize: 11 }}>
+      <div style={{ color: '#8899bb', marginBottom: 6 }}>{label}</div>
+      {payload.map((p, i) => (
+        <div key={i} style={{ color: p.color || '#f5a623', marginBottom: 2 }}>
+          {p.name}: <strong>{typeof p.value === 'number' ? p.value.toLocaleString() : p.value}</strong> {p.unit || ''}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ─── SELLER'S GUIDE MODAL ────────────────────────────────────────────────────
+
+const GUIDE_SECTIONS = {
+  primer: 'AI Inference 101',
+  kvcache: 'The KV Cache Bottleneck',
+  virtual: 'Virtual VRAM Concept',
+  plays: 'Sales Plays',
+  objections: 'Objection Handling',
+  discovery: 'Discovery Questions',
+};
+
+function SellersGuideModal({ onClose }) {
+  const [activeSection, setActiveSection] = useState('primer');
+
+  const content = {
+    primer: (
+      <div className="guide-content">
+        <h3>What is AI Inference?</h3>
+        <p>Inference is when a trained AI model generates responses. Unlike training (a one-time process), inference happens <em>every single time</em> a user asks a question — billions of times per day across enterprise deployments.</p>
+        <h3>The GPU's Role</h3>
+        <p>The AI model's weights (parameters) must live in GPU High-Bandwidth Memory (HBM / VRAM) to achieve fast generation speeds. A 70B parameter model requires roughly 140GB of VRAM just for model weights — that's nearly 2 full H100 GPUs before any actual work begins.</p>
+        <h3>Why Speed Matters</h3>
+        <p>Users abandon AI responses that take &gt;3 seconds. Enterprise deployments need to handle hundreds to thousands of concurrent conversations. The math of VRAM vs. concurrent sessions is brutal — and this is the core problem DDN solves.</p>
+        <div className="highlight-box">
+          KEY INSIGHT: GPUs are expensive ($15K–$30K each). The bottleneck is not compute — it's memory capacity and bandwidth. Storage-class memory is 10–100x cheaper per GB than HBM.
+        </div>
+      </div>
+    ),
+    kvcache: (
+      <div className="guide-content">
+        <h3>What is KV Cache?</h3>
+        <p>During inference, the transformer architecture computes "Key" and "Value" matrices for every token in the context window. These are cached to avoid recomputation — this is the KV (Key-Value) Cache.</p>
+        <h3>Why It's a Problem</h3>
+        <p>KV Cache size grows linearly with context length AND concurrency. A single session with 32K tokens on Llama 3 70B requires ~40GB of KV cache — more than some GPUs' entire VRAM capacity.</p>
+        <h3>The Memory Wall</h3>
+        <ul>
+          <li>Model weights are static — they don't change during inference</li>
+          <li>KV Cache is dynamic — it grows with every token and every user</li>
+          <li>When VRAM fills up, the system must either reject requests or start evicting cache</li>
+          <li>Cache eviction = re-computation = latency explosion = user experience failure</li>
+        </ul>
+        <div className="highlight-box">
+          DOLLAR TRANSLATION: Each cache miss (eviction + recompute) costs ~200–500ms of latency and ~0.5–2% throughput reduction. At scale, this directly translates to SLA violations and revenue loss.
+        </div>
+        <h3>The Traditional "Solution" (Wrong Answer)</h3>
+        <p>Most teams add more GPUs. This is 10–50x more expensive than the right answer, and still doesn't scale linearly because model weights must be replicated across each GPU node.</p>
+      </div>
+    ),
+    virtual: (
+      <div className="guide-content">
+        <h3>Virtual VRAM: The DDN Answer</h3>
+        <p>Just as virtual memory allows operating systems to use disk as overflow RAM, DDN AI Fabric creates a high-bandwidth storage tier that acts as overflow GPU memory — specifically for KV Cache.</p>
+        <h3>How It Works</h3>
+        <ul>
+          <li>KV Cache that doesn't fit in VRAM is offloaded to DDN storage</li>
+          <li>DDN's AI Fabric delivers 1–10+ TB/s of bandwidth — fast enough to restore context in milliseconds</li>
+          <li>The GPU can then process the next token without re-computing the full context</li>
+          <li>From the user's perspective, latency is near-identical to full in-VRAM execution</li>
+        </ul>
+        <h3>Why Not Regular NAS?</h3>
+        <p>Standard NAS delivers 1–10 GB/s. DDN AI Fabric delivers 1,000+ GB/s. At standard NAS speeds, restoring a 40GB KV cache takes 4–40 seconds — completely unacceptable. DDN restores it in 40 milliseconds.</p>
+        <div className="highlight-box">
+          ANALOGY FOR EXECUTIVES: It's like the difference between reading from a USB drive vs. RAM. Both are "storage" — but the speed difference determines whether your application runs or freezes. DDN is the RAM-speed storage tier for AI.
+        </div>
+        <h3>The Economics</h3>
+        <p>DDN storage costs ~$400/TB. H100 GPU VRAM costs ~$375/GB — nearly 1,000x more expensive. Replacing just 40GB of VRAM with DDN storage saves ~$15,000 per GPU avoided.</p>
+      </div>
+    ),
+    plays: (
+      <div className="guide-content">
+        <h3>Sales Play 1: The VRAM Saturation Play</h3>
+        <p><strong>Target:</strong> Accounts running high-concurrency or long-context workloads who are planning GPU purchases.</p>
+        <p>Run the KV Cache estimator with their actual configuration. Show the VRAM saturation point. Present the GPU count they need "the old way" vs. with DDN. The CAPEX avoidance number closes deals.</p>
+        <h3>Sales Play 2: The Throughput Ceiling Play</h3>
+        <p><strong>Target:</strong> Accounts experiencing latency spikes at peak load or hitting throughput limits.</p>
+        <p>Show the "swaps per hour" comparison. If they're on NAS and hitting the ceiling, DDN is the only solution that doesn't require a forklift GPU upgrade.</p>
+        <h3>Sales Play 3: The Multi-Tenant Platform Play</h3>
+        <p><strong>Target:</strong> Enterprises building internal AI platforms for 100+ users or managed service providers.</p>
+        <p>Concurrency is the killer. Show how serving 500 concurrent users forces a choice: 20+ GPUs OR DDN. The ROI calculator does the closing for you.</p>
+        <h3>Sales Play 4: The Context Length Trend Play</h3>
+        <p><strong>Target:</strong> Forward-looking technology leaders planning for GPT-5 class models and 1M+ token contexts.</p>
+        <p>KV cache scales with context length squared. A 1M token context on a frontier model requires petabytes of effective VRAM. GPU-only approaches are physically impossible. DDN is the only path.</p>
+      </div>
+    ),
+    objections: (
+      <div className="guide-content">
+        <h3>Common Objections & Responses</h3>
+        <div className="objection-item">
+          <div className="objection-q">❝ We'll just add more GPUs. ❞</div>
+          <div className="objection-a">Each additional H100 costs $30K+ in CAPEX plus $70K/year in cloud costs. DDN typically costs 1/10th that for equivalent KV cache capacity. More importantly, GPU supply is constrained — lead times are 6–18 months. DDN ships in weeks.</div>
+        </div>
+        <div className="objection-item">
+          <div className="objection-q">❝ We already have NAS / SAN storage. ❞</div>
+          <div className="objection-a">Enterprise NAS delivers 1–10 GB/s. KV cache offload requires 100–1000+ GB/s to maintain acceptable latency. Your existing storage is literally 100x too slow. This is a purpose-built AI storage problem, not a general storage problem.</div>
+        </div>
+        <div className="objection-item">
+          <div className="objection-q">❝ vLLM / TensorRT already handles memory management. ❞</div>
+          <div className="objection-a">These frameworks manage VRAM allocation, but they can't create VRAM that doesn't exist. When VRAM is exhausted, they either queue/reject requests or evict cache. DDN plugs in at the storage layer to give those frameworks effectively unlimited VRAM to manage.</div>
+        </div>
+        <div className="objection-item">
+          <div className="objection-q">❝ Our workloads aren't that large. ❞</div>
+          <div className="objection-a">Today. Context windows are growing 10x every 18 months. Llama 4 supports 10M tokens. Building your infrastructure without a KV cache offload strategy means a forklift upgrade in 12–18 months. DDN is the insurance policy.</div>
+        </div>
+        <div className="objection-item">
+          <div className="objection-q">❝ We're cloud-only, so hardware doesn't apply. ❞</div>
+          <div className="objection-a">DDN AI Fabric is available as a cloud-native service. The economics still hold — you're paying for GPU-hours, and DDN reduces the GPU-hours required. Less VRAM pressure = fewer instances = lower cloud bill.</div>
+        </div>
+      </div>
+    ),
+    discovery: (
+      <div className="guide-content">
+        <h3>Discovery Questions by Category</h3>
+        <h3>Current State</h3>
+        <ul>
+          <li>What models are you running or planning to deploy, and at what parameter scale?</li>
+          <li>What's your current average and peak concurrent session count?</li>
+          <li>How long is your typical context window? Are you using RAG or long-document processing?</li>
+          <li>What's your p95 latency today, and what's your SLA requirement?</li>
+        </ul>
+        <h3>Pain Signals</h3>
+        <ul>
+          <li>Have you hit any situations where GPU memory was the limiting factor for scaling?</li>
+          <li>What happens during peak load — do you queue, reject, or degrade service?</li>
+          <li>How many GPUs are you planning to add in the next 12 months, and why?</li>
+          <li>What's your current storage infrastructure for your AI cluster?</li>
+        </ul>
+        <h3>Business Context</h3>
+        <ul>
+          <li>What's the revenue or productivity impact of your AI deployment?</li>
+          <li>What would a 30% improvement in AI throughput mean for your business?</li>
+          <li>How are you thinking about the build vs. buy vs. optimize decision for AI infra?</li>
+          <li>Who owns the AI infrastructure budget — IT, AI/ML team, or a separate BU?</li>
+        </ul>
+        <h3>Forward-Looking</h3>
+        <ul>
+          <li>Are you planning to move to larger models (70B → 405B) in the next year?</li>
+          <li>How important is the ability to serve 10x your current concurrency in 18 months?</li>
+          <li>Have you modeled what your GPU costs look like at 10x current scale?</li>
+        </ul>
+      </div>
+    ),
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <div>
+            <div className="modal-title">📖 SELLER'S GUIDE</div>
+            <div className="modal-subtitle">DDN KV Cache Storage — Field Enablement Reference</div>
+          </div>
+          <button className="close-btn" onClick={onClose}>✕</button>
+        </div>
+        <div className="guide-tabs">
+          {Object.entries(GUIDE_SECTIONS).map(([key, label]) => (
+            <button key={key} className={`guide-tab ${activeSection === key ? 'active' : ''}`} onClick={() => setActiveSection(key)}>{label}</button>
+          ))}
+        </div>
+        {content[activeSection]}
+      </div>
+    </div>
+  );
+}
+
+// ─── VRAM COMPOSITION BAR ────────────────────────────────────────────────────
+
+function VramBar({ calc }) {
+  const { modelWeightsGB, engineOverheadGB, kvInVram, kvOffload, totalVramGB, isOverloaded } = calc;
+  const total = modelWeightsGB + engineOverheadGB + totalVramGB; // use vram as denominator
+  const wPct = Math.min(95, (modelWeightsGB / totalVramGB) * 100);
+  const ePct = Math.min(95 - wPct, (engineOverheadGB / totalVramGB) * 100);
+  const kPct = Math.min(100 - wPct - ePct, (kvInVram / totalVramGB) * 100);
+  const oPct = Math.min(10, (kvOffload / totalVramGB) * 100); // overflow indicator
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text-dim)' }}>0 GB</span>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--amber)' }}>{totalVramGB} GB VRAM CAPACITY</span>
+      </div>
+      <div className="vram-bar-container">
+        <div className="vram-bar-segment" style={{ width: `${wPct}%`, background: '#1a4a7a', color: '#7ab8f5' }}>
+          {wPct > 8 ? 'WEIGHTS' : ''}
+        </div>
+        <div className="vram-bar-segment" style={{ width: `${ePct}%`, background: '#1a3a2a', color: '#5ab88a' }}>
+          {ePct > 6 ? 'ENG' : ''}
+        </div>
+        <div className="vram-bar-segment" style={{ width: `${kPct}%`, background: '#3a2a0a', color: '#f5a623' }}>
+          {kPct > 5 ? 'KV CACHE' : ''}
+        </div>
+        {isOverloaded && <div className="vram-bar-segment" style={{ width: '15%', background: 'rgba(255,77,77,0.3)', color: '#ff4d4d', borderLeft: '2px dashed #ff4d4d' }}>OVERFLOW</div>}
+        {isOverloaded && <div className="vram-overflow" />}
+      </div>
+      <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
+        {[
+          { color: '#7ab8f5', label: `Model Weights: ${calc.modelWeightsGB}GB` },
+          { color: '#5ab88a', label: `Engine Overhead: ${calc.engineOverheadGB}GB` },
+          { color: '#f5a623', label: `KV Cache (in VRAM): ${calc.kvInVram}GB` },
+          ...(isOverloaded ? [{ color: '#ff4d4d', label: `KV Offload Required: ${calc.kvOffload}GB` }] : []),
+        ].map((item, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text-secondary)' }}>
+            <div style={{ width: 10, height: 10, background: item.color, borderRadius: 1, flexShrink: 0 }} />
+            {item.label}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── TABS ────────────────────────────────────────────────────────────────────
+
+function PhysicsTab({ config, calc }) {
+  const throughputData = [
+    { name: 'Standard NAS', swaps: Math.min(calc.requiredSwaps * 2, typeof calc.nasSwapsPerHour === 'number' ? calc.nasSwapsPerHour : calc.requiredSwaps * 2), bandwidth: STORAGE_OPTIONS.nas.bandwidth },
+    { name: 'DDN AI Fabric', swaps: Math.min(calc.requiredSwaps * 3, typeof calc.ddnSwapsPerHour === 'number' ? calc.ddnSwapsPerHour : calc.requiredSwaps * 3), bandwidth: STORAGE_OPTIONS.ddn.bandwidth },
+  ];
+
+  const restoreData = [
+    { name: 'Standard NAS', restore: calc.nasRestoreTimeSec * 1000, unit: 'ms' },
+    { name: 'DDN AI Fabric', restore: calc.ddnRestoreTimeSec * 1000, unit: 'ms' },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {calc.isOverloaded ? (
+        <div className="warning-banner">
+          <span className="warning-icon">⚠</span>
+          <div>
+            <strong>VRAM SATURATION DETECTED:</strong> Total memory requirement ({calc.totalRequired}GB) exceeds GPU VRAM ({calc.totalVramGB}GB). 
+            KV Cache offload of <strong>{calc.kvOffload}GB</strong> required. Storage bandwidth becomes the critical path.
+          </div>
+        </div>
+      ) : (
+        <div className="success-banner">
+          <span className="warning-icon">✓</span>
+          <div>Configuration fits within GPU VRAM ({calc.utilizationPct}% utilized). No offloading required at current settings.</div>
+        </div>
+      )}
+
+      {calc.nasOverloaded && (
+        <div className="warning-banner">
+          <span className="warning-icon">🔴</span>
+          <div>
+            <strong>SYSTEM OVERLOAD — STANDARD NAS:</strong> Required swaps/hr ({calc.requiredSwaps.toLocaleString()}) exceeds NAS capacity ({typeof calc.nasSwapsPerHour === 'number' ? calc.nasSwapsPerHour.toLocaleString() : calc.nasSwapsPerHour}/hr). 
+            SLA breach certain. DDN AI Fabric required.
+          </div>
+        </div>
+      )}
+
+      <div className="metric-grid">
+        <div className={`metric-card ${calc.isOverloaded ? 'danger' : ''}`}>
+          <div className="metric-label">Total Memory Required</div>
+          <div className="metric-value">{calc.totalRequired}</div>
+          <div className="metric-unit">GB / {calc.totalVramGB}GB available</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Model Weights</div>
+          <div className="metric-value">{calc.modelWeightsGB}</div>
+          <div className="metric-unit">GB ({LLM_PRESETS[config.llm].params}B params × {config.precision === 'fp16' ? '2' : '1'}B)</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">KV Cache Total</div>
+          <div className="metric-value">{calc.totalKvCacheGB}</div>
+          <div className="metric-unit">GB ({config.concurrency} concurrent sessions)</div>
+        </div>
+        <div className={`metric-card ${calc.kvOffload > 0 ? 'danger' : 'success'}`}>
+          <div className="metric-label">KV Offload Required</div>
+          <div className="metric-value">{calc.kvOffload}</div>
+          <div className="metric-unit">GB must reside on storage tier</div>
+        </div>
+      </div>
+
+      <div className="chart-card">
+        <div className="chart-title">
+          HBM COMPOSITION
+          <span className="chart-title-sub">GPU VRAM BREAKDOWN — {GPU_PRESETS[config.gpu].name}</span>
+        </div>
+        <VramBar calc={calc} />
+      </div>
+
+      {calc.kvOffload > 0 && (
+        <div className="two-col">
+          <div className="chart-card">
+            <div className="chart-title">
+              CONTEXT RESTORE TIME
+              <span className="chart-title-sub">per session swap ({calc.kvOffload}GB KV cache)</span>
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={restoreData} margin={{ top: 10, right: 10, bottom: 5, left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e2d42" />
+                <XAxis dataKey="name" tick={{ fontFamily: 'IBM Plex Mono', fontSize: 10, fill: '#8899bb' }} />
+                <YAxis tick={{ fontFamily: 'IBM Plex Mono', fontSize: 10, fill: '#8899bb' }} unit="ms" />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="restore" name="Restore Time" unit="ms">
+                  <Cell fill="#ff4d4d" />
+                  <Cell fill="#00e676" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="chart-card">
+            <div className="chart-title">
+              SUSTAINABLE SWAPS/HOUR
+              <span className="chart-title-sub">storage throughput capacity vs. demand</span>
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={throughputData} margin={{ top: 10, right: 10, bottom: 5, left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e2d42" />
+                <XAxis dataKey="name" tick={{ fontFamily: 'IBM Plex Mono', fontSize: 10, fill: '#8899bb' }} />
+                <YAxis tick={{ fontFamily: 'IBM Plex Mono', fontSize: 10, fill: '#8899bb' }} />
+                <Tooltip content={<CustomTooltip />} />
+                <ReferenceLine y={calc.requiredSwaps} stroke="#f5a623" strokeDasharray="4 4" label={{ value: `REQUIRED: ${calc.requiredSwaps}`, fill: '#f5a623', fontSize: 10, fontFamily: 'IBM Plex Mono' }} />
+                <Bar dataKey="swaps" name="Capacity (swaps/hr)">
+                  <Cell fill={calc.nasOverloaded ? '#ff4d4d' : '#8899bb'} />
+                  <Cell fill="#00e676" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      <div className="chart-card">
+        <div className="chart-title">MEMORY PHYSICS BREAKDOWN</div>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Size (GB)</th>
+              <th>% of VRAM</th>
+              <th>Type</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Model Weights ({LLM_PRESETS[config.llm].name})</td>
+              <td className="highlight">{calc.modelWeightsGB} GB</td>
+              <td>{Math.round(calc.modelWeightsGB / calc.totalVramGB * 100)}%</td>
+              <td><span className="tag tag-cyan">STATIC</span></td>
+              <td>{config.precision.toUpperCase()} precision</td>
+            </tr>
+            <tr>
+              <td>Framework Engine Overhead ({FW_PRESETS[config.framework].name})</td>
+              <td className="highlight">{calc.engineOverheadGB} GB</td>
+              <td>{Math.round(calc.engineOverheadGB / calc.totalVramGB * 100)}%</td>
+              <td><span className="tag tag-cyan">STATIC</span></td>
+              <td>{FW_PRESETS[config.framework].desc}</td>
+            </tr>
+            <tr>
+              <td>KV Cache (in VRAM)</td>
+              <td className="highlight">{calc.kvInVram} GB</td>
+              <td>{Math.round(calc.kvInVram / calc.totalVramGB * 100)}%</td>
+              <td><span className="tag tag-amber">DYNAMIC</span></td>
+              <td>{calc.kvGBPerRequest} GB × {Math.round(calc.kvInVram / (calc.kvGBPerRequest || 1))} sessions</td>
+            </tr>
+            {calc.kvOffload > 0 && (
+              <tr>
+                <td>KV Cache (offloaded to storage)</td>
+                <td className="bad">{calc.kvOffload} GB</td>
+                <td className="bad">OVERFLOW</td>
+                <td><span className="tag tag-red">OFFLOAD</span></td>
+                <td>Requires high-bandwidth storage tier</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="chart-card">
+        <div className="chart-title">STORAGE PERFORMANCE COMPARISON</div>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Storage Tier</th>
+              <th>Bandwidth</th>
+              <th>Context Restore Time</th>
+              <th>Overhead vs. Generation</th>
+              <th>Verdict</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Standard NAS</td>
+              <td>{STORAGE_OPTIONS.nas.bandwidth} GB/s</td>
+              <td className="bad">{calc.kvOffload > 0 ? `${(calc.nasRestoreTimeSec * 1000).toLocaleString()} ms` : 'N/A'}</td>
+              <td className="bad">{calc.kvOffload > 0 ? `${calc.nasOverheadPct}%` : 'N/A'}</td>
+              <td><span className="tag tag-red">{calc.nasOverloaded ? 'SYSTEM OVERLOAD' : calc.kvOffload > 0 ? 'UNACCEPTABLE' : 'OK'}</span></td>
+            </tr>
+            <tr>
+              <td>DDN AI Fabric</td>
+              <td className="good">{STORAGE_OPTIONS.ddn.bandwidth.toLocaleString()} GB/s</td>
+              <td className="good">{calc.kvOffload > 0 ? `${(calc.ddnRestoreTimeSec * 1000).toFixed(1)} ms` : 'N/A'}</td>
+              <td className="good">{calc.kvOffload > 0 ? `${calc.ddnOverheadPct}%` : 'N/A'}</td>
+              <td><span className="tag tag-green">{calc.ddnOverloaded ? 'AT LIMIT' : 'OPTIMAL'}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function DataLifecycleTab({ config, calc }) {
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    month: `M${i + 1}`,
+    kv: Math.round(calc.kvCachePerDay * 30 * (i + 1) / 1000),
+  }));
+
+  const storageCompare = [
+    { tier: 'GPU HBM', costPerGB: 375, capacity: calc.totalVramGB, suitable: false },
+    { tier: 'DDN AI Fabric', costPerGB: STORAGE_OPTIONS.ddn.costPerTB / 1000, capacity: 10000, suitable: true },
+    { tier: 'Standard NAS', costPerGB: STORAGE_OPTIONS.nas.costPerTB / 1000, capacity: 50000, suitable: false },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="metric-grid">
+        <div className="metric-card">
+          <div className="metric-label">KV Cache Generated / Day</div>
+          <div className="metric-value">{calc.kvCachePerDay.toLocaleString()}</div>
+          <div className="metric-unit">GB of unique context data</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Monthly Storage Need</div>
+          <div className="metric-value">{Math.round(calc.kvCachePer30Days / 1000)}</div>
+          <div className="metric-unit">TB cumulative KV cache</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Annual Storage Need</div>
+          <div className="metric-value">{Math.round(calc.kvCachePer365Days / 1000)}</div>
+          <div className="metric-unit">TB at current scale</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Per-Session KV Size</div>
+          <div className="metric-value">{calc.kvGBPerRequest}</div>
+          <div className="metric-unit">GB per {config.inputTokens.toLocaleString()}-token context</div>
+        </div>
+      </div>
+
+      <div className="chart-card">
+        <div className="chart-title">
+          CUMULATIVE KV CACHE STORAGE GROWTH
+          <span className="chart-title-sub">12-month projection at {config.concurrency} concurrent users</span>
+        </div>
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={months} margin={{ top: 10, right: 20, bottom: 5, left: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e2d42" />
+            <XAxis dataKey="month" tick={{ fontFamily: 'IBM Plex Mono', fontSize: 10, fill: '#8899bb' }} />
+            <YAxis tick={{ fontFamily: 'IBM Plex Mono', fontSize: 10, fill: '#8899bb' }} unit=" TB" />
+            <Tooltip content={<CustomTooltip />} />
+            <Line type="monotone" dataKey="kv" name="Cumulative KV Storage" unit=" TB" stroke="#f5a623" strokeWidth={2} dot={{ fill: '#f5a623', r: 4 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="chart-card">
+        <div className="chart-title">STORAGE TIER ECONOMICS COMPARISON</div>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Storage Tier</th>
+              <th>Cost per GB</th>
+              <th>Monthly Cost ({Math.round(calc.kvCachePer30Days / 1000)} TB)</th>
+              <th>Bandwidth</th>
+              <th>KV Cache Suitable</th>
+            </tr>
+          </thead>
+          <tbody>
+            {storageCompare.map((row, i) => (
+              <tr key={i}>
+                <td>{row.tier}</td>
+                <td className="highlight">${row.costPerGB.toFixed(2)}/GB</td>
+                <td className={i === 1 ? 'good' : i === 0 ? 'bad' : ''}>
+                  ${Math.round(calc.kvCachePer30Days * row.costPerGB / 1000).toLocaleString()}K
+                </td>
+                <td className={i === 1 ? 'good' : ''}>{i === 0 ? '3.35 TB/s (HBM)' : i === 1 ? '1+ TB/s' : '1–10 GB/s'}</td>
+                <td><span className={`tag ${row.suitable ? 'tag-green' : i === 0 ? 'tag-amber' : 'tag-red'}`}>{row.suitable ? 'OPTIMAL' : i === 0 ? 'TOO EXPENSIVE' : 'TOO SLOW'}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="chart-card">
+        <div className="chart-title">KV CACHE PHYSICS: PER-TOKEN BREAKDOWN</div>
+        <table className="data-table">
+          <thead>
+            <tr><th>Parameter</th><th>Value</th><th>Formula</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Model</td><td>{LLM_PRESETS[config.llm].name}</td><td>—</td></tr>
+            <tr><td>Attention Heads</td><td>{LLM_PRESETS[config.llm].heads} (Q) / {LLM_PRESETS[config.llm].kvHeads} (KV)</td><td>GQA (Grouped Query Attention)</td></tr>
+            <tr><td>Head Dimension</td><td>{calc.headDim}</td><td>hidden_dim / num_heads</td></tr>
+            <tr><td>Layers</td><td>{LLM_PRESETS[config.llm].layers}</td><td>transformer depth</td></tr>
+            <tr><td>KV Bytes per Token</td><td className="highlight">{calc.kvBytesPerToken.toLocaleString()} bytes</td><td>2 × kv_heads × head_dim × 2B × layers</td></tr>
+            <tr><td>KV per {config.inputTokens.toLocaleString()}-token context</td><td className="highlight">{calc.kvGBPerRequest} GB</td><td>tokens × bytes_per_token / 1e9</td></tr>
+            <tr><td>KV for {config.concurrency} concurrent sessions</td><td className="highlight">{calc.totalKvCacheGB} GB</td><td>sessions × GB_per_session</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ExecReportTab({ config, calc }) {
+  const gpu = GPU_PRESETS[config.gpu];
+  const roiPositive = calc.roi > 0;
+
+  const comparisonData = [
+    { name: 'Without DDN', gpus: calc.gpusNeededWithNas, capex: calc.gpusNeededWithNas * gpu.capex / 1000, opex: Math.round(calc.gpusNeededWithNas * gpu.hourlyCloud * 24 * 365 / 1000) },
+    { name: 'With DDN', gpus: calc.gpusWithDdn, capex: calc.gpusWithDdn * gpu.capex / 1000, opex: Math.round(calc.gpusWithDdn * gpu.hourlyCloud * 24 * 365 / 1000) },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="chart-card" style={{ background: 'linear-gradient(135deg, rgba(245,166,35,0.06) 0%, rgba(13,20,32,1) 100%)' }}>
+        <div className="exec-section-title">EXECUTIVE SUMMARY</div>
+        <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+          Running <strong style={{ color: 'var(--text-primary)' }}>{LLM_PRESETS[config.llm].name}</strong> on <strong style={{ color: 'var(--text-primary)' }}>{GPU_PRESETS[config.gpu].name}</strong> with <strong style={{ color: 'var(--text-primary)' }}>{config.concurrency} concurrent sessions</strong> and <strong style={{ color: 'var(--text-primary)' }}>{config.inputTokens.toLocaleString()}-token contexts</strong> requires {calc.totalRequired}GB of effective GPU memory — 
+          {calc.isOverloaded
+            ? <strong style={{ color: 'var(--red)' }}> {calc.offloadGB}GB more than your {calc.totalVramGB}GB GPU provides</strong>
+            : <strong style={{ color: 'var(--green)' }}> within your {calc.totalVramGB}GB GPU capacity</strong>
+          }.
+          {calc.isOverloaded && ` DDN AI Fabric provides the ${calc.kvOffload}GB of high-speed virtual VRAM needed — at a fraction of GPU cost.`}
+        </p>
+      </div>
+
+      <div className="metric-grid">
+        <div className={`metric-card ${calc.gpusSaved > 0 ? 'success' : ''}`}>
+          <div className="metric-label">GPUs Avoided</div>
+          <div className="metric-value">{calc.gpusSaved}</div>
+          <div className="metric-unit">{GPU_PRESETS[config.gpu].name} units</div>
+        </div>
+        <div className={`metric-card ${calc.capexSaved > 0 ? 'success' : ''}`}>
+          <div className="metric-label">CAPEX Avoidance</div>
+          <div className="metric-value">${(calc.capexSaved / 1000).toFixed(0)}K</div>
+          <div className="metric-unit">one-time hardware cost</div>
+        </div>
+        <div className={`metric-card ${calc.opexSavedPerYear > 0 ? 'success' : ''}`}>
+          <div className="metric-label">Annual OPEX Savings</div>
+          <div className="metric-value">${(calc.opexSavedPerYear / 1000).toFixed(0)}K</div>
+          <div className="metric-unit">vs. equivalent GPU provisioning</div>
+        </div>
+        <div className={`metric-card ${roiPositive ? 'success' : 'info'}`}>
+          <div className="metric-label">Estimated ROI</div>
+          <div className="metric-value">{calc.roi > 0 ? '+' : ''}{calc.roi}%</div>
+          <div className="metric-unit">first year, vs. GPU-only approach</div>
+        </div>
+      </div>
+
+      {calc.gpusSaved > 0 && (
+        <div className="two-col">
+          <div className="roi-highlight">
+            <div className="roi-number">{calc.gpusNeededWithNas}x</div>
+            <div className="roi-label">GPUs REQUIRED WITHOUT DDN</div>
+            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-dim)', fontFamily: 'var(--mono)' }}>
+              ${(calc.gpusNeededWithNas * gpu.capex / 1000).toFixed(0)}K CAPEX · ${Math.round(calc.gpusNeededWithNas * gpu.hourlyCloud * 24 * 365 / 1000)}K/yr OPEX
+            </div>
+          </div>
+          <div className="roi-highlight" style={{ background: 'linear-gradient(135deg, rgba(0,230,118,0.1) 0%, rgba(0,212,255,0.05) 100%)', borderColor: 'var(--green-dim)' }}>
+            <div className="roi-number" style={{ color: 'var(--green)' }}>{calc.gpusWithDdn}x</div>
+            <div className="roi-label" style={{ color: 'var(--green)' }}>GPUs REQUIRED WITH DDN</div>
+            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-dim)', fontFamily: 'var(--mono)' }}>
+              ${(calc.gpusWithDdn * gpu.capex / 1000).toFixed(0)}K CAPEX · ${Math.round(calc.gpusWithDdn * gpu.hourlyCloud * 24 * 365 / 1000)}K/yr OPEX
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="chart-card">
+        <div className="chart-title">
+          GPU INFRASTRUCTURE COST COMPARISON
+          <span className="chart-title-sub">CAPEX + annual OPEX at {config.concurrency} concurrent sessions</span>
+        </div>
+        <ResponsiveContainer width="100%" height={240}>
+          <BarChart data={comparisonData} margin={{ top: 10, right: 20, bottom: 5, left: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e2d42" />
+            <XAxis dataKey="name" tick={{ fontFamily: 'IBM Plex Mono', fontSize: 11, fill: '#8899bb' }} />
+            <YAxis tick={{ fontFamily: 'IBM Plex Mono', fontSize: 10, fill: '#8899bb' }} unit="K" />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend wrapperStyle={{ fontFamily: 'IBM Plex Mono', fontSize: 10, color: '#8899bb' }} />
+            <Bar dataKey="capex" name="CAPEX ($K)" fill="#1a4a7a" stackId="a" />
+            <Bar dataKey="opex" name="Annual OPEX ($K)" fill="#3a2a0a" stackId="a" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="chart-card">
+        <div className="chart-title">BUSINESS IMPACT SUMMARY</div>
+        <table className="data-table">
+          <thead>
+            <tr><th>Business Metric</th><th>Without DDN</th><th>With DDN</th><th>Delta</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>GPUs Required</td>
+              <td className="bad">{calc.gpusNeededWithNas}</td>
+              <td className="good">{calc.gpusWithDdn}</td>
+              <td className="good">-{calc.gpusSaved} GPU{calc.gpusSaved !== 1 ? 's' : ''}</td>
+            </tr>
+            <tr>
+              <td>Hardware CAPEX</td>
+              <td className="bad">${(calc.gpusNeededWithNas * gpu.capex / 1000).toFixed(0)}K</td>
+              <td className="good">${(calc.gpusWithDdn * gpu.capex / 1000).toFixed(0)}K</td>
+              <td className="good">-${(calc.capexSaved / 1000).toFixed(0)}K</td>
+            </tr>
+            <tr>
+              <td>Annual Cloud/OPEX</td>
+              <td className="bad">${Math.round(calc.gpusNeededWithNas * gpu.hourlyCloud * 24 * 365 / 1000)}K/yr</td>
+              <td className="good">${Math.round(calc.gpusWithDdn * gpu.hourlyCloud * 24 * 365 / 1000)}K/yr</td>
+              <td className="good">-${(calc.opexSavedPerYear / 1000).toFixed(0)}K/yr</td>
+            </tr>
+            <tr>
+              <td>Context Restore Latency</td>
+              <td className="bad">{calc.kvOffload > 0 ? `${(calc.nasRestoreTimeSec * 1000).toLocaleString()}ms` : 'N/A'}</td>
+              <td className="good">{calc.kvOffload > 0 ? `${(calc.ddnRestoreTimeSec * 1000).toFixed(1)}ms` : 'N/A'}</td>
+              <td className="good">{calc.kvOffload > 0 ? `${Math.round((1 - calc.ddnRestoreTimeSec / calc.nasRestoreTimeSec) * 100)}% faster` : 'N/A'}</td>
+            </tr>
+            <tr>
+              <td>GPU Procurement Lead Time</td>
+              <td className="bad">6–18 months</td>
+              <td className="good">Weeks (storage)</td>
+              <td className="good">Faster time to scale</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="chart-card">
+        <div className="exec-section-title">WHY DDN AI FABRIC — THE THREE LAWS OF AI STORAGE</div>
+        {[
+          { n: '01', title: 'Speed Law', body: `DDN AI Fabric delivers 1,000+ GB/s — 100–1000x faster than standard NAS. KV cache restoration in ${calc.kvOffload > 0 ? `${(calc.ddnRestoreTimeSec * 1000).toFixed(1)}ms` : 'milliseconds'} instead of seconds means AI responses feel instantaneous.` },
+          { n: '02', title: 'Cost Law', body: `GPU HBM costs ~$375/GB. DDN AI Fabric costs ~$0.40/GB. Offloading ${calc.kvOffload}GB of KV cache to DDN avoids purchasing ~${Math.ceil(calc.kvOffload / calc.totalVramGB)} full ${gpu.name} GPUs ($${(Math.ceil(calc.kvOffload / calc.totalVramGB) * gpu.capex / 1000).toFixed(0)}K).` },
+          { n: '03', title: 'Scale Law', body: `Context windows are growing 10x every 18 months. A 1M-token context creates ~${Math.round(calc.kvBytesPerToken * 1000000 / 1e9 * 10) / 10}TB of KV cache per session — physically impossible in GPU VRAM. DDN is the only infrastructure path to future-scale AI.` },
+        ].map((item, i) => (
+          <div key={i} style={{ display: 'flex', gap: 16, padding: '14px 0', borderBottom: i < 2 ? '1px solid var(--border)' : 'none' }}>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 28, fontWeight: 700, color: 'var(--amber)', opacity: 0.3, lineHeight: 1, flexShrink: 0, width: 40 }}>{item.n}</div>
+            <div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: 'var(--amber)', marginBottom: 6 }}>{item.title.toUpperCase()}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>{item.body}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN APP ────────────────────────────────────────────────────────────────
+
+const DEFAULT_CONFIG = {
+  gpu: 'H100',
+  llm: 'Llama-3-70B',
+  framework: 'vllm',
+  precision: 'fp16',
+  inputTokens: 8000,
+  outputTokens: 2000,
+  concurrency: 100,
+  activeScenario: null,
+};
+
+function App() {
+  const [config, setConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('kv-cache-config');
+      return saved ? { ...DEFAULT_CONFIG, ...JSON.parse(saved) } : DEFAULT_CONFIG;
+    } catch { return DEFAULT_CONFIG; }
+  });
+  const [activeTab, setActiveTab] = useState('physics');
+  const [showGuide, setShowGuide] = useState(false);
+  const fileInputRef = useRef();
+
+  useEffect(() => {
+    try { localStorage.setItem('kv-cache-config', JSON.stringify(config)); } catch {}
+  }, [config]);
+
+  const setField = (k, v) => setConfig(c => ({ ...c, [k]: v }));
+
+  const applyScenario = (key) => {
+    const s = SCENARIO_PRESETS[key];
+    setConfig(c => ({ ...c, inputTokens: s.inputTokens, outputTokens: s.outputTokens, concurrency: s.concurrency, activeScenario: key }));
+  };
+
+  const exportConfig = () => {
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'kv-cache-config.json'; a.click();
+  };
+
+  const importConfig = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { try { setConfig({ ...DEFAULT_CONFIG, ...JSON.parse(ev.target.result) }); } catch {} };
+    reader.readAsText(file);
+  };
+
+  const calc = calcMemory(config);
+
+  return (
+    <div className="app-shell">
+      {/* TOPBAR */}
+      <div className="topbar">
+        <div className="logo-mark" />
+        <div>
+          <div className="logo-text">KV CACHE STORAGE ESTIMATOR <span>// DDN AI</span></div>
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'var(--mono)', marginTop: 1 }}>Powered by BoostRun · AI Infrastructure Sales Enablement</div>
+        </div>
+        <div className="topbar-right">
+          <button className="btn btn-ghost" onClick={() => setShowGuide(true)}>📖 Seller's Guide</button>
+          <button className="btn btn-ghost" onClick={exportConfig}>⬇ Export</button>
+          <label className="btn btn-ghost" style={{ cursor: 'pointer' }}>
+            ⬆ Import <input type="file" accept=".json" style={{ display: 'none' }} onChange={importConfig} />
+          </label>
+          <button className="btn btn-amber" onClick={() => window.open('https://www.ddn.com/solutions/ai-data-platform/', '_blank')}>
+            Learn DDN →
+          </button>
+        </div>
+      </div>
+
+      {/* SIDEBAR */}
+      <div className="sidebar">
+        <div>
+          <div className="section-label">Scenario Presets</div>
+          <div className="preset-grid">
+            {Object.entries(SCENARIO_PRESETS).map(([key, s]) => (
+              <button key={key} className={`preset-btn ${config.activeScenario === key ? 'active' : ''}`} onClick={() => applyScenario(key)}>
+                <span className="preset-icon">{s.icon}</span>
+                {s.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="section-label">Hardware Configuration</div>
+          <div className="input-group">
+            <label>GPU Model</label>
+            <select value={config.gpu} onChange={e => setField('gpu', e.target.value)}>
+              {Object.entries(GPU_PRESETS).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
+            </select>
+            <div className="tooltip-text">{GPU_PRESETS[config.gpu].vram}GB VRAM · ${GPU_PRESETS[config.gpu].capex.toLocaleString()} CAPEX · ${GPU_PRESETS[config.gpu].hourlyCloud}/hr cloud</div>
+          </div>
+          <div className="input-group">
+            <label>LLM Model</label>
+            <select value={config.llm} onChange={e => setField('llm', e.target.value)}>
+              {Object.entries(LLM_PRESETS).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
+            </select>
+          </div>
+          <div className="input-group">
+            <label>Inference Framework</label>
+            <select value={config.framework} onChange={e => setField('framework', e.target.value)}>
+              {Object.entries(FW_PRESETS).map(([k, v]) => <option key={k} value={k}>{v.name} — {v.desc}</option>)}
+            </select>
+          </div>
+          <div className="input-group">
+            <label>Model Precision</label>
+            <select value={config.precision} onChange={e => setField('precision', e.target.value)}>
+              <option value="fp16">FP16 / BF16 (standard)</option>
+              <option value="int8">INT8 (quantized)</option>
+              <option value="fp32">FP32 (full precision)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="section-label">Workload Parameters</div>
+          <div className="input-group">
+            <label>Input Context (tokens)</label>
+            <div className="range-row">
+              <input type="range" min={512} max={128000} step={512} value={config.inputTokens} onChange={e => setField('inputTokens', +e.target.value)} />
+              <span className="range-val">{config.inputTokens.toLocaleString()}</span>
+            </div>
+          </div>
+          <div className="input-group">
+            <label>Output Length (tokens)</label>
+            <div className="range-row">
+              <input type="range" min={100} max={8000} step={100} value={config.outputTokens} onChange={e => setField('outputTokens', +e.target.value)} />
+              <span className="range-val">{config.outputTokens.toLocaleString()}</span>
+            </div>
+          </div>
+          <div className="input-group">
+            <label>Concurrent Sessions</label>
+            <div className="range-row">
+              <input type="range" min={1} max={2000} step={1} value={config.concurrency} onChange={e => setField('concurrency', +e.target.value)} />
+              <span className="range-val">{config.concurrency}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="section-label">Quick Status</div>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-dim)' }}>VRAM Used</span>
+              <span style={{ color: calc.isOverloaded ? 'var(--red)' : 'var(--green)' }}>{calc.utilizationPct}%</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-dim)' }}>KV Offload</span>
+              <span style={{ color: calc.kvOffload > 0 ? 'var(--amber)' : 'var(--green)' }}>{calc.kvOffload} GB</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-dim)' }}>GPUs Saved</span>
+              <span style={{ color: 'var(--cyan)' }}>{calc.gpusSaved}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>
+              <span style={{ color: 'var(--text-dim)' }}>CAPEX Saved</span>
+              <span style={{ color: 'var(--amber)' }}>${(calc.capexSaved / 1000).toFixed(0)}K</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* MAIN CONTENT */}
+      <div className="main-content">
+        <div>
+          <div className="tabs">
+            {[
+              { id: 'physics', label: '⚡ Inference Physics' },
+              { id: 'lifecycle', label: '📊 Data Lifecycle' },
+              { id: 'exec', label: '💼 Executive Report' },
+            ].map(t => (
+              <button key={t.id} className={`tab ${activeTab === t.id ? 'active' : ''}`} onClick={() => setActiveTab(t.id)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {activeTab === 'physics' && <PhysicsTab config={config} calc={calc} />}
+        {activeTab === 'lifecycle' && <DataLifecycleTab config={config} calc={calc} />}
+        {activeTab === 'exec' && <ExecReportTab config={config} calc={calc} />}
+      </div>
+
+      {showGuide && <SellersGuideModal onClose={() => setShowGuide(false)} />}
+    </div>
+  );
+}
+
+ReactDOM.render(<App />, document.getElementById('root'));
+</script>
+</body>
+</html>
